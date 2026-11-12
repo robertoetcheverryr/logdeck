@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{title}</title>
+<style>
+:root {{
+    --bg: #f8f9fa;
+    --card: #ffffff;
+    --accent: #0d6efd;
+}}
+body {{
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    margin: 0;
+    padding: 20px;
+    line-height: 1.5;
+    color: #212529;
+}}
+header {{
+    max-width: 1400px;
+    margin: 0 auto 20px;
+}}
+h1 {{ margin: 0 0 8px; font-size: 1.8rem; }}
+.controls {{
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}}
+button {{
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}}
+button:hover {{ filter: brightness(0.95); }}
+details {{
+    background: var(--card);
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}}
+summary {{
+    padding: 12px 16px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    user-select: none;
+}}
+summary::marker {{ content: ""; }}
+summary::before {{
+    content: "▶";
+    display: inline-block;
+    margin-right: 8px;
+    transition: transform 0.2s;
+}}
+details[open] summary::before {{
+    transform: rotate(90deg);
+}}
+.section-content {{
+    padding: 0 16px 16px;
+    overflow-x: auto;
+}}
+.data-table {{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    margin-top: 8px;
+}}
+.data-table th, .data-table td {{
+    padding: 8px 10px;
+    border: 1px solid #dee2e6;
+    text-align: left;
+    vertical-align: top;
+}}
+.data-table th {{
+    background: #f1f3f5;
+    position: sticky;
+    top: 0;
+}}
+.data-table tr:nth-child(even) {{ background: #f8f9fa; }}
+.kv-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(0px, auto));
+    gap: 8px 24px;
+}}
+footer {{
+    margin-top: 40px;
+    font-size: 0.8rem;
+    color: #6c757d;
+    text-align: center;
+}}
+/* Top-level Tabs - Better contrast */
+.top-tabs {{
+    margin-bottom: 24px;
+}}
+.tab-buttons {{
+    display: flex;
+    border-bottom: 2px solid #dee2e6;
+    margin-bottom: 16px;
+    background: #f8f9fa;
+}}
+.tab-button {{
+    background: #f1f3f5;
+    border: 1px solid #dee2e6;
+    border-bottom: none;
+    padding: 12px 28px;
+    font-size: 1.05rem;
+    cursor: pointer;
+    color: #495057;
+    margin-right: 4px;
+    border-radius: 6px 6px 0 0;
+    transition: all 0.2s;
+}}
+.tab-button:hover {{
+    background: #e9ecef;
+    color: #0d6efd;
+}}
+.tab-button.active {{
+    background: var(--card);   /* white */
+    border-color: #dee2e6;
+    color: var(--accent);
+    font-weight: 600;
+    box-shadow: 0 -2px 4px rgba(0,0,0,0.05);
+}}
+.tab-content {{
+    display: none;
+    background: var(--card);
+    border: 1px solid #dee2e6;
+    border-radius: 0 8px 8px 8px;
+    padding: 16px;
+}}
+.tab-content.active {{
+    display: block;
+}}
+@media print {{
+    button {{ display: none !important; }}
+    details {{ page-break-inside: avoid; }}
+}}
+</style>
+</head>
+<body>
+
+<header>
+    <h1>{heading}</h1>
+    <div class="controls">
+        <button onclick="expandAll()">Expand All</button>
+        <button onclick="collapseAll()">Collapse All</button>
+        <button onclick="copyVisibleAsHTML(this)">Copy Visible as HTML</button>
+        <button onclick="window.print()">Print / Save PDF</button>
+    </div>
+</header>
+
+<main style="max-width: 1400px; margin: 0 auto;">
+    {sections}
+</main>
+
+<footer>
+    {footer} • {now}
+</footer>
+
+<script>
+    {script}
+</script>
+
+</body>
+</html>
