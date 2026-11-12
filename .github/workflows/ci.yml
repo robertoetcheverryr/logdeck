@@ -39,7 +39,7 @@ jobs:
           pytest --cov=logdeck --cov-report=xml --cov-report=term-missing --cov-fail-under=80
 
       - name: Upload coverage to Codecov
-        if: matrix.os == 'windows-latest' && matrix.python-version == "3.14"
+        if: matrix.os == 'windows-latest' && matrix.python-version == '3.14'
         uses: codecov/codecov-action@v5
         with:
           files: ./coverage.xml
