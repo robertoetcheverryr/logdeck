@@ -8,7 +8,7 @@ tab mechanics and viewer JavaScript.
 from logdeck.report import Tab, build_tabs_html, render_report
 from logdeck.tables import dicts_to_html_table, escape, make_section
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "Tab",

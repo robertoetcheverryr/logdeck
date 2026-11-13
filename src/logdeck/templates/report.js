@@ -39,7 +39,11 @@ function copyVisibleAsHTML(btn) {
     // Build self-contained HTML suitable for pasting into Salesforce / rich-text editors
     let htmlParts = [];
 
-    htmlParts.push(`<h1 style="color:#0d6efd; font-size:1.5rem; margin-bottom:4px;">SVC / Storwize / FlashSystem SNAP Analysis</h1>`);
+    // Reuse the page's own heading
+    const pageHeading = document.querySelector("h1");
+    const headingText = pageHeading ? pageHeading.textContent.trim() : "Log Analysis";
+
+    htmlParts.push(`<h1 style="color:#0d6efd; font-size:1.5rem; margin-bottom:4px;">${headingText}</h1>`);
 
     // Embedded styles – most rich-text editors keep a limited <style> block
     htmlParts.push(`

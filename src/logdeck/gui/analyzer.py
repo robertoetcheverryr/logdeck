@@ -1,5 +1,6 @@
 """Drop-zone analyzer window chassis shared by logdeck consumer apps.
 """
+import os
 import queue
 import threading
 import tkinter as tk
@@ -9,14 +10,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-# Worker(input_path, suggested_report_path) -> path of the written report.
-ReportWorker = Callable[[Path, Path], Path]
+# Worker(primary_path, sidecars, suggested_report_path) -> path of the written report.
+ReportWorker = Callable[[Path, "tuple[Path, ...]", Path], Path]
 
 _BG = "#f8f9fa"
 _HEADER_BG = "#0066cc"
 _STATUS_GREEN = "#198754"
 _STATUS_RED = "#dc3545"
 _LINK_BLUE = "#0d6efd"
+_CHIP_BG = "#e7f1ff"
 _DROP_IDLE_BG = _BG
 _DROP_READY_BG = "#d1e7dd"
 _DROP_BUSY_BG = "#fff3cd"
@@ -43,6 +45,15 @@ class AnalyzerConfig:
     )
     initial_status: str = "Ready. Select or drop a file to begin."
     processing_status: str = "🔄  Processing input... This may take some time."
+    # Companion files (e.g. CSV exports) that ride along with the primary.
+    # Classification is by suffix only; name rules belong to the app worker.
+    sidecar_suffixes: Sequence[str] = ()
+    sidecar_name_hint: Sequence[str] = ()  # dialog label / chip grouping only
+
+
+def _path_key(name: str) -> str:
+    """Normalized dedup key (case/separator-insensitive on Windows)."""
+    return os.path.normcase(str(Path(name)))
 
 
 def accepts_path(name: str, accept_suffixes: Sequence[str]) -> bool:
@@ -53,6 +64,34 @@ def accepts_path(name: str, accept_suffixes: Sequence[str]) -> bool:
     """
     lowered = name.lower()
     return any(lowered.endswith(suffix.lower()) for suffix in accept_suffixes)
+
+
+def classify_paths(
+    names: Sequence[str],
+    primary_suffixes: Sequence[str],
+    sidecar_suffixes: Sequence[str],
+) -> tuple[list[str], list[str]]:
+    """Split file names into (primaries, sidecars) by suffix.
+
+    Pure function (no tkinter): the testable routing core of the chassis.
+    A name matching a primary suffix is never a sidecar; first-occurrence
+    order is kept; duplicates (normalized per platform) are dropped;
+    names matching neither suffix are discarded.
+    """
+    primaries: list[str] = []
+    sidecars: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        key = _path_key(name)
+        if key in seen:
+            continue
+        if accepts_path(name, primary_suffixes):
+            seen.add(key)
+            primaries.append(name)
+        elif accepts_path(name, sidecar_suffixes):
+            seen.add(key)
+            sidecars.append(name)
+    return primaries, sidecars
 
 
 def report_path_for(input_path: Path, report_suffix: str) -> Path:
@@ -79,6 +118,7 @@ class AnalyzerWindow:
         self.worker = worker
         self.report_suffix = report_suffix
         self.auto_open_report = auto_open_report
+        self._sidecars_enabled = bool(config.sidecar_suffixes)
 
         self.root.title(config.title)
         self.root.geometry(geometry)
@@ -87,9 +127,11 @@ class AnalyzerWindow:
 
         # State
         self.current_input: Path | None = None
+        self.current_sidecars: tuple[Path, ...] = ()
         self.current_report: Path | None = None
         self.processing = False
         self.result_queue: queue.Queue[tuple[str, Path | str]] = queue.Queue()
+        self._status_base = config.initial_status
 
         self._build_ui()
 
@@ -148,6 +190,9 @@ class AnalyzerWindow:
         )
         self.drop_label.pack(fill=tk.BOTH, expand=True, pady=5)
 
+        # Removable sidecar chips (hidden while none attached)
+        self.chip_frame = tk.Frame(self.drop_frame, bg=_BG)
+
         # Make the whole label clickable
         self.drop_label.bind("<Button-1>", lambda event: self._on_browse_clicked())
         self.drop_label.bind("<Enter>", lambda e: self.drop_label.config(bg="#e7f1ff"))
@@ -173,6 +218,15 @@ class AnalyzerWindow:
             width=28,
         )
         self.process_btn.pack(side=tk.LEFT)
+
+        if self._sidecars_enabled:
+            self.attach_btn = ttk.Button(
+                btn_frame,
+                text="📎  Attach Sidecars...",
+                command=self._on_attach_clicked,
+                width=20,
+            )
+            self.attach_btn.pack(side=tk.LEFT, padx=(10, 0))
 
         # Status section
         status_frame = ttk.LabelFrame(main, text="  Status  ", padding=10)
@@ -228,7 +282,7 @@ class AnalyzerWindow:
         self.root.drop_target_register("DND_Files")  # type: ignore[attr-defined]
         self.drop_label.drop_target_register("DND_Files")  # type: ignore[attr-defined]
 
-        def on_drop(event: tk.Event[tk.Misc]) -> None:
+        def on_drop(event: "tk.Event[tk.Misc]") -> None:
             # event.data can contain one or more files wrapped in {}
             # (typeshed's Event lacks the .data attribute, hence getattr)
             raw: str = getattr(event, "data", "")
@@ -238,21 +292,32 @@ class AnalyzerWindow:
                 files = [raw.strip("{}")]
 
             if files:
-                candidate = Path(files[0])
-                if accepts_path(candidate.name, self.config.accept_suffixes):
-                    self._select_input(candidate, "Ready to analyze")
-                else:
-                    accepted = "/".join(self.config.accept_suffixes)
-                    messagebox.showwarning("Invalid File", f"Please drop a {accepted} file.")
+                self._handle_dropped_paths(files)
 
         self.drop_label.dnd_bind("<<Drop>>", on_drop)  # type: ignore[attr-defined]
         self.root.dnd_bind("<<Drop>>", on_drop)  # type: ignore[attr-defined]
 
-    def _select_input(self, path: Path, hint: str) -> None:
+    def _handle_dropped_paths(self, paths: Sequence[str]) -> None:
+        """Route a dropped/selected file list: first primary wins, rest sidecars."""
+        primaries, sidecar_names = classify_paths(
+            paths, self.config.accept_suffixes, self.config.sidecar_suffixes
+        )
+        if primaries:
+            # A new primary replaces the old one and its sidecars.
+            self._set_primary(Path(primaries[0]), "Ready to analyze")
+        if sidecar_names and self._sidecars_enabled:
+            self._add_sidecars([Path(s) for s in sidecar_names])
+        if not primaries and not sidecar_names:
+            accepted = "/".join(self.config.accept_suffixes)
+            messagebox.showwarning("Invalid File", f"Please drop a {accepted} file.")
+
+    def _set_primary(self, path: Path, hint: str) -> None:
         self.current_input = path
+        self.current_sidecars = ()
         self.drop_label.config(text=f"✅  {path.name}\n{hint}", bg=_DROP_READY_BG)
         self.process_btn.config(state=tk.NORMAL)
-        self.status_var.set(f"File selected: {path.name}")
+        self._status_base = f"File selected: {path.name}"
+        self._refresh_sidecar_ui()
         self.report_path_var.set("")
         self.open_browser_btn.config(state=tk.DISABLED)
 
@@ -268,7 +333,69 @@ class AnalyzerWindow:
             filetypes=filetypes,
         )
         if path:
-            self._select_input(Path(path), "Click 'Analyze' or drop another file")
+            self._set_primary(Path(path), "Click 'Analyze' or drop another file")
+
+    def _on_attach_clicked(self) -> None:
+        if self.processing:
+            return
+        hint = ", ".join(self.config.sidecar_name_hint)
+        label = "Sidecar Files" + (f" ({hint})" if hint else "")
+        paths = filedialog.askopenfilenames(
+            title="Select sidecar files",
+            filetypes=[(label, " ".join(self.config.sidecar_suffixes)), ("All files", "*.*")],
+        )
+        if paths:
+            self._add_sidecars([Path(p) for p in paths])
+
+    def _add_sidecars(self, paths: Sequence[Path]) -> None:
+        merged: list[Path] = list(self.current_sidecars)
+        seen = {_path_key(str(p)) for p in merged}
+        for path in paths:
+            key = _path_key(str(path))
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(path)
+        self.current_sidecars = tuple(merged)
+        self._refresh_sidecar_ui()
+
+    def _remove_sidecar(self, path: Path) -> None:
+        self.current_sidecars = tuple(
+            p for p in self.current_sidecars if _path_key(str(p)) != _path_key(str(path))
+        )
+        self._refresh_sidecar_ui()
+
+    def _refresh_sidecar_ui(self) -> None:
+        """Rebuild the chip row and the status line (counts)."""
+        for child in self.chip_frame.winfo_children():
+            child.destroy()
+        if self.current_sidecars:
+            self.chip_frame.pack(fill=tk.X, pady=(5, 0))
+            for path in self.current_sidecars:
+                chip = tk.Label(
+                    self.chip_frame,
+                    text=f"📎 {path.name}  ✕",
+                    font=("Segoe UI", 9),
+                    bg=_CHIP_BG,
+                    relief="solid",
+                    borderwidth=1,
+                    padx=6,
+                    pady=2,
+                    cursor="hand2",
+                )
+
+                def _remover(_event: "tk.Event[tk.Misc]", p: Path = path) -> None:
+                    self._remove_sidecar(p)
+
+                chip.bind("<Button-1>", _remover)
+                chip.pack(side=tk.LEFT, padx=(0, 6))
+        else:
+            self.chip_frame.pack_forget()
+
+        status = self._status_base
+        if self.current_sidecars:
+            status += f"  —  {len(self.current_sidecars)} sidecar(s) attached"
+        self.status_var.set(status)
 
     def _on_process_clicked(self) -> None:
         if not self.current_input or self.processing:
@@ -277,6 +404,8 @@ class AnalyzerWindow:
         self.processing = True
         self.browse_btn.config(state=tk.DISABLED)
         self.process_btn.config(state=tk.DISABLED)
+        if self._sidecars_enabled:
+            self.attach_btn.config(state=tk.DISABLED)
         self.progress.pack(pady=5)
         self.progress.start(12)
         self.status_var.set(self.config.processing_status)
@@ -284,17 +413,19 @@ class AnalyzerWindow:
         self.open_browser_btn.config(state=tk.DISABLED)
         self.drop_label.config(bg=_DROP_BUSY_BG, text="⏳  Processing... Please wait")
 
+        # Snapshot inputs so later UI edits cannot change what runs
+        primary = self.current_input
+        sidecars = self.current_sidecars
+
         # Run heavy work in background thread
-        thread = threading.Thread(target=self._worker_thread, daemon=True)
+        thread = threading.Thread(target=self._worker_thread, args=(primary, sidecars), daemon=True)
         thread.start()
 
-    def _worker_thread(self) -> None:
+    def _worker_thread(self, primary: Path, sidecars: tuple[Path, ...]) -> None:
         """Heavy lifting happens here (does not block GUI)."""
         try:
-            input_path = self.current_input
-            assert input_path is not None
-            report_path = report_path_for(input_path, self.report_suffix)
-            written = self.worker(input_path, report_path)
+            report_path = report_path_for(primary, self.report_suffix)
+            written = self.worker(primary, sidecars, report_path)
             self.result_queue.put(("success", written))
         except Exception as exc:
             self.result_queue.put(("error", f"{type(exc).__name__}: {exc}"))
@@ -310,6 +441,8 @@ class AnalyzerWindow:
                 self.processing = False
                 self.browse_btn.config(state=tk.NORMAL)
                 self.process_btn.config(state=tk.NORMAL)
+                if self._sidecars_enabled:
+                    self.attach_btn.config(state=tk.NORMAL)
                 self.drop_label.config(bg=_DROP_IDLE_BG)
 
                 if msg_type == "success":

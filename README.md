@@ -26,9 +26,16 @@ analyzer apps: browse/drag-drop input, background worker thread with
 queue-polled UI updates, indeterminate progress, status colors, report
 link, save-next-to-input and auto-open-in-browser. The app supplies an
 `AnalyzerConfig` (all text + accepted file suffixes) and a worker
-`(input_path, report_path) -> report_path`.
+`(primary_path, sidecars: tuple[Path, ...], suggested_report_path) -> report_path`.
 
-`import logdeck` does not pulls in tkinter. Install the GUI extra for
+Optional companion files ("sidecars"): set `sidecar_suffixes` (e.g.
+`(".csv",)`) on the config and the chassis classifies every drop by
+suffix via `classify_paths`, keeps removable chips per sidecar, shows an
+"Attach…" button, and passes the full sidecar tuple to the worker.
+With `sidecar_suffixes` empty (default) behavior is plain single-file.
+Name rules (app-specific file prefixes) belong to the app's worker, never the chassis.
+
+`import logdeck` does not pull in tkinter. Install the GUI extra for
 drag & drop: `pip install "logdeck[gui]"` (adds `tkinterdnd2`; apps
 create a `TkinterDnD.Tk()` root — a plain `tk.Tk()` root degrades to
 browse-only).

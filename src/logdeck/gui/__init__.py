@@ -11,6 +11,7 @@ from logdeck.gui.analyzer import (
     AnalyzerWindow,
     ReportWorker,
     accepts_path,
+    classify_paths,
     report_path_for,
     run_centered,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "AnalyzerWindow",
     "ReportWorker",
     "accepts_path",
+    "classify_paths",
     "report_path_for",
     "run_centered",
 ]
