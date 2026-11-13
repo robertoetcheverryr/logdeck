@@ -19,6 +19,34 @@ data processing and section content.
 
 Zero runtime dependencies. Python 3.11+.
 
+## GUI chassis (optional)
+
+`logdeck.gui` provides the shared Tkinter drop-zone window used by the
+analyzer apps: browse/drag-drop input, background worker thread with
+queue-polled UI updates, indeterminate progress, status colors, report
+link, save-next-to-input and auto-open-in-browser. The app supplies an
+`AnalyzerConfig` (all text + accepted file suffixes) and a worker
+`(input_path, report_path) -> report_path`.
+
+`import logdeck` does not pulls in tkinter. Install the GUI extra for
+drag & drop: `pip install "logdeck[gui]"` (adds `tkinterdnd2`; apps
+create a `TkinterDnD.Tk()` root — a plain `tk.Tk()` root degrades to
+browse-only).
+
+```python
+import tkinter as tk
+from logdeck.gui import AnalyzerConfig, AnalyzerWindow, run_centered
+
+config = AnalyzerConfig(
+    title="My Analyzer", heading="📊 My Analyzer", subtitle="Drop a file",
+    accept_suffixes=(".log",), dialog_title="Pick a log",
+    dialog_filetype_label="Logs", drop_hint="Drop .log here",
+    browse_text="Browse...", process_text="▶ Analyze",
+)
+win = AnalyzerWindow(tk.Tk(), config, my_worker)
+run_centered(win.root)
+```
+
 ## Usage
 
 ```python
@@ -37,4 +65,5 @@ page = render_report(
 
     src/logdeck/report.py     deck assembly + bundled templates
     src/logdeck/tables.py     escaping / tables / sections
+    src/logdeck/gui/          optional Tkinter analyzer-window chassis
     src/logdeck/templates/    report.html (page shell), report.js (tab & copy logic)

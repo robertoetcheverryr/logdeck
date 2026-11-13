@@ -10,11 +10,14 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [
-    { name = "Roberto Etcheverry" },
+    { name = "Roberto Jose Etcheverry Romero" },
 ]
 dependencies = []
 
 [project.optional-dependencies]
+gui = [
+    "tkinterdnd2",
+]
 dev = [
     "pytest>=9",
     "pytest-cov",
@@ -28,6 +31,11 @@ packages = ["src/logdeck"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.coverage.run]
+# The GUI chassis needs a display; CI legs (esp. ubuntu) skip those tests.
+# It is covered locally via xvfb-run instead of gated here.
+omit = ["*/logdeck/gui/*"]
 
 [tool.ruff]
 src = ["src"]
